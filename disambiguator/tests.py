@@ -15,4 +15,5 @@ for tree in trees:
 	g.update(tree)
 	graphs.append(g)
 new_graph = merge_graphs(graphs)
+print new_graph.partition("table")
 new_graph.draw("new_graph")
