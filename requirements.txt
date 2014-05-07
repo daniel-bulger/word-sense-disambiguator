@@ -1,0 +1,4 @@
+PyYAML==3.11
+nltk==2.0.4
+-e git+https://github.com/emilmont/pyStatParser.git@6eca4df8a9a283c2b04a32ad89be6c08f06ca125#egg=pyStatParser-dev
+wsgiref==0.1.2
