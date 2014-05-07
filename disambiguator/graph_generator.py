@@ -52,6 +52,7 @@ class GraphGenerator:
 					self.graph.add_edge(word,other_word,weight=0)
 				self.graph.edge[word][other_word]["weight"] += 1.0/get_distance(leaf,other_leaf)
 	def draw_graph(self,filename):
+		print self.graph.number_of_edges()
 		avg=sum([d["weight"] for (u,v,d) in self.graph.edges(data=True) ])/float(self.graph.number_of_edges())
 		elarge=[(u,v) for (u,v,d) in self.graph.edges(data=True) if d['weight'] >avg]
 		pos=nx.spring_layout(self.graph) # positions for all nodes
