@@ -1,5 +1,5 @@
-word-sense-disambiguator
-========================
+disambiguator
+=============
 
 This project explores a new method of finding similarities between words for the purpose of word sense disambiguation (WSD). This method involves determining semantic similarity based on distance in syntax trees as opposed to a naïve word distance. The trees are obtained from an existing syntax tree generator. Once these similarities are determined, we use a quasi-clique method to partition the similarity graph into word sense pools.
 	
