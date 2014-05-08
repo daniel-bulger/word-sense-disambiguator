@@ -46,7 +46,7 @@ def merge_graphs(graphs):
 	return new_graph
 
 class Graph(nx.Graph):
-	def __init__(self):
+	def __init__(self, graph=None):
 		nx.Graph.__init__(self)
 	def update(self,syntax_tree):
 		ptree = ParentedTree.convert(syntax_tree)
@@ -97,10 +97,20 @@ class Graph(nx.Graph):
 	def partition(self,central_word):
 		senses = [[node] for node in nx.Graph.neighbors(self,central_word)]
 		return self._partition_helper(senses,central_word)
-		
-
 
 	def save(self):
 		nx.write_gml(self,"similarity_graph.gml")
+
 	def load(self):
-		self=nx.read_gml('similarity_graph.gml')
+		self.__dict__.update(nx.read_gml('similarity_graph.gml').__dict__)
+
+		new_graph = Graph()
+		for node in self.nodes(data=True):
+			new_graph.add_node(node[1]["label"], num=node[1]["num"])
+
+		for edge in self.edges(data=True):
+			new_graph.add_edge(self.node[edge[0]]["label"],
+							   self.node[edge[1]]["label"],
+							   weight=edge[2]["weight"])
+
+		self.__dict__.update(new_graph.__dict__)
