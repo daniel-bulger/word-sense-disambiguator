@@ -76,6 +76,12 @@ class Graph(nx.Graph):
 
 	def invalidate_cache(self):
 		self.cached_relatedness = None
+
+	def print_relatedness_to_target_in_order(self):
+		for node in sorted(self.neighbors(self.target_word),key=self.relatedness_to_target_word,reverse=True):
+			print node,
+		print
+
 	def update(self,syntax_tree):
 		ptree = ParentedTree.convert(syntax_tree)
 		for leaf in get_leaves(ptree):
@@ -141,7 +147,7 @@ class Graph(nx.Graph):
 		self.cached_relatedness = median
 		return median
 	def relatedness_to_target_word(self,word):
-		return self.edge[word][self.target_word]["weight"]
+		return self.edge[word][self.target_word]["weight"]/self.get_normalization_factor(self.target_word,word)
 	def get_normalization_factor(self,word1,word2):
 		return math.sqrt(self.node[word1]["num"]*self.node[word2]["num"])
 	def get_senses(self):

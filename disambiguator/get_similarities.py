@@ -49,3 +49,4 @@ print "Getting senses"
 print new_graph.get_senses()
 print "Prediction is..."
 print new_graph.get_predicted_sense(sentence)
+new_graph.print_relatedness_to_target_in_order()
