@@ -6,7 +6,7 @@ import math
 import random
 from random import choice
 import copy
-WORDS_PER_SENSE = 999 # shhhh
+WORDS_PER_SENSE = 5 # shhhh
 EXPERIMENTALLY_DETERMINED_CONSTANT_NUM_STEPS = 10
 EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD = 1/float(10)
 
@@ -52,12 +52,10 @@ def get_leaves(ptree):
 def merge_graphs(graphs):
 	new_graph = Graph(graphs[0].target_word)
 	for graph in graphs:
-		print "Merging nodes"
 		for node in graph.nodes(data=True):
 			if not node[0] in new_graph:
 				new_graph.add_node(node[0],num=0,pos=node[1]["pos"])
 			new_graph.node[node[0]]["num"] += node[1]["num"]
-		print "Merging edges"
 		for edge in graph.edges(data=True):
 			e1 = edge[0]
 			e2 = edge[1]
@@ -81,11 +79,21 @@ class Graph(nx.Graph):
 		for node in sorted(self.neighbors(self.target_word),key=self.relatedness_to_target_word,reverse=True):
 			print node,self.relatedness_to_target_word(node),self.node[node]["num"]
 		print
-
+	def trim(self):
+		#remove nodes that only occur once
+		nodes_to_remove = []
+		for node in self.nodes(data=True):
+			if node[1]["num"] == 1:
+				nodes_to_remove.append(node[0])
+		for node in nodes_to_remove:
+			self.remove_node(node)
 	def update(self,syntax_tree):
 		ptree = ParentedTree.convert(syntax_tree)
+		bad_words = [":",",",".","?",";"]
 		for leaf in get_leaves(ptree):
 			word = leaf[0]
+			if word in bad_words:
+				continue
 			if not word in self:
 				self.add_node(word,num=0,pos=leaf.pos()[0][1])
 			self.node[word]["num"] += 1
@@ -98,10 +106,14 @@ class Graph(nx.Graph):
 			print "Error: target word not in sentence"
 		for leaf in get_leaves(ptree):
 			word = leaf[0]
+			if word in bad_words:
+				continue
 			if word == self.target_word:
 				for other_leaf in get_leaves(ptree):
 					other_word = other_leaf[0]
 					if word == other_word:
+						continue
+					if other_word in bad_words:
 						continue
 					if not (word,other_word) in self.edges():
 						self.add_edge(word,other_word,weight=0)
@@ -112,6 +124,8 @@ class Graph(nx.Graph):
 					if word == other_word:
 						continue
 					if other_word == self.target_word:
+						continue
+					if other_word in bad_words:
 						continue
 					if not (word,other_word) in self.edges():
 						self.add_edge(word,other_word,weight=0)
@@ -137,8 +151,8 @@ class Graph(nx.Graph):
 			return self.cached_relatedness
 		weights = []
 		for edge in self.edges(data=True):
-			if edge[0]==self.target_word or edge[1] == self.target_word:
-				weights.append(edge[2]["weight"])
+			#if edge[0]==self.target_word or edge[1] == self.target_word:
+			weights.append(edge[2]["weight"]/self.get_normalization_factor(edge[0],edge[1]))
 		median = 0
 		if len(weights) % 2 == 0:
 			median = (weights[len(weights)/2]+weights[len(weights)/2 + 1]) / 2.0
@@ -152,7 +166,8 @@ class Graph(nx.Graph):
 		return math.sqrt(self.node[word1]["num"]*self.node[word2]["num"])
 	def get_senses(self):
 		if not self.cached_senses:
-			self.cached_senses = self.get_senses_markov()
+			self.trim()
+			self.cached_senses = self.get_senses_greedy()
 		return self.cached_senses
 	def get_senses_maxmax(self):
 		# MaxMax algorithm (http://www.sussex.ac.uk/Users/drh21/78160368.CICLing.2013.preprint.pdf)
@@ -196,14 +211,6 @@ class Graph(nx.Graph):
 		current_graph.remove_node(self.target_word)
 		senses = []
 
-		#remove nodes that only occur once
-		nodes_to_remove = []
-		for node in current_graph.nodes(data=True):
-			if node[1]["num"] == 1:
-				nodes_to_remove.append(node[0])
-		for node in nodes_to_remove:
-			current_graph.remove_node(node)
-
 		while current_graph.nodes():
 			new_graph = nx.Graph()
 			current_node = choice(current_graph.nodes())
@@ -241,16 +248,55 @@ class Graph(nx.Graph):
 			for node in top_component:
 				current_graph.remove_node(node)
 		return senses
-	def get_predicted_sense(self,sentence,senses = None):
+	def get_senses_greedy(self):
+		senses = [[node] for node in nx.Graph.neighbors(self,self.target_word) 
+			if (self.edge[node][self.target_word]["weight"]/self.get_normalization_factor(node,self.target_word) > 
+				self.get_median_relatedness()/2)]
+		return self._greedy_helper(senses)
+	def _greedy_helper(self,senses):
+		max_closeness = 0
+		closeness_indices = (0,0)
+		for i,sense1 in enumerate(senses):
+			for j,sense2 in enumerate(senses):
+				if i == j:
+					continue
+				closeness_to_center = 0.0
+				for word in sense1+sense2:
+					closeness_to_center += self.edge[word][self.target_word]["weight"]/self.get_normalization_factor(word,self.target_word)
+				closeness_to_center /= float(len(sense1+sense2))
+				closeness_to_each_other = 0.0
+				for word1 in sense1:
+					for word2 in sense2:
+						if word2 in self.edge[word1]:
+							closeness_to_each_other += self.edge[word1][word2]["weight"]/self.get_normalization_factor(word1,word2)
+				closeness_to_each_other /= float(len(sense1)*len(sense2))
+				if closeness_to_each_other > max_closeness:
+					max_closeness = closeness_to_each_other
+					closeness_indices = (i,j)
+		if self.get_median_relatedness() < max_closeness:
+			new_sense = senses[closeness_indices[1]][:]
+			senses[closeness_indices[0]].extend(new_sense)
+			senses.pop(closeness_indices[1])
+			return self._greedy_helper(senses)
+		return senses
+	def get_predicted_sense(self,sentence_tree,senses = None):
 		if not senses:
 			senses = self.get_senses()
 		max_similarity = 0
 		most_similar_sense = None
 		for sense in senses:
 			similarity = 0
-			for word in sentence:
+			target_leaf = None
+			for leaf in sentence_tree.leaves():
+				if leaf[0] == self.target_word:
+					target_leaf = leaf
+					break
+			if not target_leaf:
+				raise Exception("Target word must be in sentence to search")
+			for leaf in sentence_tree.leaves():
+				word = leaf[0]
 				if word in sense:
-					similarity += 1
+					similarity += 1/float(get_distance(leaf,target_leaf))
 			if similarity > max_similarity:
 				max_similarity = similarity
 				most_similar_sense = sense
