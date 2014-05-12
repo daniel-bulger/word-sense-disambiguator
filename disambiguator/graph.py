@@ -2,6 +2,9 @@ import networkx as nx
 from nltk.tree import ParentedTree
 import matplotlib.pyplot as plt
 import thread
+import math
+WORDS_PER_SENSE = 999
+
 def get_distance_from_root(node):
 	depth = 0
 	current = node.parent()
@@ -32,11 +35,11 @@ def get_leaves(ptree):
 			leaves.append(ptree) 
 	return leaves 
 def merge_graphs(graphs):
-	new_graph = Graph()
+	new_graph = Graph(graphs[0].target_word)
 	for graph in graphs:
 		for node in graph.nodes(data=True):
 			if not node[0] in new_graph:
-				new_graph.add_node(node[0],num=0)
+				new_graph.add_node(node[0],num=0,pos=node[1]["pos"])
 			new_graph.node[node[0]]["num"] += node[1]["num"]
 		for edge in graph.edges(data=True):
 			e1 = edge[0]
@@ -47,29 +50,52 @@ def merge_graphs(graphs):
 	return new_graph
 
 class Graph(nx.Graph):
-	def __init__(self):
+	def __init__(self,target_word):
 		nx.Graph.__init__(self)
 		self.cached_relatedness = None
-		self.normalized = False
+		self.target_word = target_word
+		self.add_node(target_word,num=0,is_target=1)
+
 	def invalidate_cache(self):
 		self.cached_relatedness = None
-		self.normalized = False
 	def update(self,syntax_tree):
 		ptree = ParentedTree.convert(syntax_tree)
 		for leaf in get_leaves(ptree):
 			word = leaf[0]
 			if not word in self:
-				self.add_node(word,num=0)
+				self.add_node(word,num=0,pos=leaf.pos()[0][1])
 			self.node[word]["num"] += 1
+		central_leaf = None
+		for leaf in get_leaves(ptree):
+			if leaf[0] == self.target_word:
+				central_leaf = leaf
+				break
+		if not central_leaf:
+			print "Error: target word not in sentence"
 		for leaf in get_leaves(ptree):
 			word = leaf[0]
-			for other_leaf in get_leaves(ptree):
-				other_word = other_leaf[0]
-				if word == other_word:
-					continue
-				if not (word,other_word) in self.edges():
-					self.add_edge(word,other_word,weight=0)
-				self.edge[word][other_word]["weight"] += 1.0/get_distance(leaf,other_leaf)
+			if word == self.target_word:
+				for other_leaf in get_leaves(ptree):
+					other_word = other_leaf[0]
+					if word == other_word:
+						continue
+					if not (word,other_word) in self.edges():
+						self.add_edge(word,other_word,weight=0)
+					self.edge[word][other_word]["weight"] += 1.0/math.sqrt(get_distance(leaf,other_leaf))
+			else:
+				for other_leaf in get_leaves(ptree):
+					other_word = other_leaf[0]
+					if word == other_word:
+						continue
+					if other_word == self.target_word:
+						continue
+					if not (word,other_word) in self.edges():
+						self.add_edge(word,other_word,weight=0)
+					self.edge[word][other_word]["weight"] += 1.0/math.pow(
+						get_distance(leaf,other_leaf)*
+						get_distance(leaf,central_leaf)*
+						get_distance(other_leaf,central_leaf),1/3
+						)
 		self.invalidate_cache()
 	def draw(self,filename = None):
 		avg=sum([d["weight"] for (u,v,d) in self.edges(data=True) ])/float(self.number_of_edges())
@@ -82,22 +108,13 @@ class Graph(nx.Graph):
 			plt.savefig(filename)  # pyplot draw()
 		else:
 			plt.show()
-	def normalize(self):
-		if self.normalized:
-			return
-		for edge in self.edges(data=True):
-			edge[2]["normalized_weight"] = edge[2]["weight"]/float(self.node[edge[0]]["num"]+self.node[edge[1]]["num"])
-		self.normalized = True
-	def ensure_normalized(self):
-		if not self.normalized:
-			self.normalize()
 	def get_median_relatedness(self):
 		if self.cached_relatedness != None:
 			return self.cached_relatedness
-		self.ensure_normalized()
 		weights = []
 		for edge in self.edges(data=True):
-			weights.append(edge[2]["normalized_weight"])
+			if edge[0]==self.target_word or edge[1] == self.target_word:
+				weights.append(edge[2]["weight"])
 		median = 0
 		if len(weights) % 2 == 0:
 			median = (weights[len(weights)/2]+weights[len(weights)/2 + 1]) / 2.0
@@ -105,58 +122,60 @@ class Graph(nx.Graph):
 			median = weights[len(weights)/2]
 		self.cached_relatedness = median
 		return median
-
-	def _partition_helper(self,senses,central_word):
-		# put similar things together
-		# for current_sense in senses:
-		# 	for word in current_sense:
-		# 		for other_sense in senses:
-		# 			if current_sense == other_sense:
-		# 				continue
-		# 			similarity_to_current_sense = 0.0
-
-
-		# get the appropriate number of senses
-		max_closeness = 0
-		closeness_indices = (0,0)
-		for i,sense1 in enumerate(senses):
-			for j,sense2 in enumerate(senses):
-				if i == j:
+	def relatedness_to_target_word(self,word):
+		return self.edge[word][self.target_word]["weight"]
+	def get_normalization_factor(self,word1,word2):
+		return math.sqrt(self.node[word1]["num"]*self.node[word2]["num"])
+	def get_senses(self):
+		# MaxMax algorithm (http://www.sussex.ac.uk/Users/drh21/78160368.CICLing.2013.preprint.pdf)
+		new_graph = nx.DiGraph()
+		for node in self.nodes():
+			if node == self.target_word:
+				continue
+			new_graph.add_node(node,is_root=True)
+		for node in self.nodes():
+			if node == self.target_word:
+				continue
+			max_weight = 0
+			max_neighbor = None
+			for neighbor in self.neighbors(node):
+				if neighbor == self.target_word:
 					continue
-				closeness_to_center = 0.0
-				for word in sense1+sense2:
-					closeness_to_center += self.edge[word][central_word]["normalized_weight"]
-				closeness_to_center /= float(len(sense1+sense2))
-				closeness_to_each_other = 0.0
-				for word1 in sense1:
-					for word2 in sense2:
-						if word2 in self.edge[word1]:
-							closeness_to_each_other += self.edge[word1][word2]["normalized_weight"]
-				closeness_to_each_other /= float(len(sense1)*len(sense2))
-				if closeness_to_each_other > max_closeness:
-					max_closeness = closeness_to_each_other
-					closeness_indices = (i,j)
-		print senses
-		if self.get_median_relatedness() < max_closeness:
-			new_sense = senses[closeness_indices[1]][:]
-			senses[closeness_indices[0]].extend(new_sense)
-			senses.pop(closeness_indices[1])
-			return self._partition_helper(senses,central_word)
+				if self.edge[node][neighbor]["weight"]/self.get_normalization_factor(node,neighbor) > max_weight:
+					max_weight = self.edge[node][neighbor]["weight"]/self.get_normalization_factor(node,neighbor)
+					max_neighbor = neighbor
+			if not max_neighbor:
+				raise Exception("No neighbors found for "+node)
+			new_graph.add_edge(max_neighbor,node)
+		for node in new_graph.nodes(data=True):
+			if node[1]["is_root"]:
+				for descendant in nx.descendants(new_graph,node[0]):
+					new_graph.node[descendant]["is_root"] = False
+		senses = []
+		for node in new_graph.nodes(data=True):
+			if node[1]["is_root"]:
+				senses.append([node[0]]+list(nx.descendants(new_graph,node[0])))
+		for i in range(len(senses)):
+			new_sense = []
+			most_related = sorted(senses[i],key=self.relatedness_to_target_word,reverse=True)[:WORDS_PER_SENSE-1]
+
+			senses[i] = most_related[:]
+			#senses[i] = [word for word in senses[i] if self.node[word]["pos"] == "NN" ]
+
 		return senses
-
-	def get_senses(self,central_word):
-		self.ensure_normalized()
-		senses = [[node] for node in nx.Graph.neighbors(self,central_word) 
-			if self.edge[node][central_word]["normalized_weight"] > self.get_median_relatedness()]
-		return self._partition_helper(senses,central_word)
-
 	def save_to_file(self,filename):
 		nx.write_gml(self,filename)
 
 	def load_from_file(self,filename):
 		self.__dict__.update(nx.read_gml(filename).__dict__)
-
-		new_graph = Graph()
+		target = None
+		for node in self.nodes(data=True):
+			if "is_target" in node[1]:
+				target = node[1]["label"]
+				break
+		if not target:
+			raise Exception("Error: no target word found in graph")
+		new_graph = Graph(target)
 		for node in self.nodes(data=True):
 			new_graph.add_node(str(node[1]["label"]), num=node[1]["num"])
 
@@ -165,3 +184,4 @@ class Graph(nx.Graph):
 							   str(self.node[edge[1]]["label"]),
 							   weight=edge[2]["weight"])
 		self.__dict__.update(new_graph.__dict__)
+		self.target_word = target
