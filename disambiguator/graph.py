@@ -5,9 +5,10 @@ import thread
 import math
 import random
 from random import choice
+import copy
 WORDS_PER_SENSE = 999 # shhhh
 EXPERIMENTALLY_DETERMINED_CONSTANT_NUM_STEPS = 1000
-EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD = 1/float(12)
+EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD = 1/float(8)
 
 def weighted_choice(choices):
    total = sum(w for c, w in choices)
@@ -178,19 +179,47 @@ class Graph(nx.Graph):
 
 		return senses
 	def get_senses_markov(self):
-		current_node = choice(self.nodes())
-		new_graph = nx.Graph()
-		for i in range(EXPERIMENTALLY_DETERMINED_CONSTANT_NUM_STEPS * len(self.nodes())):
-			# do magic
-			next_node = weighted_choice([(n,self.edge[n][current_node]["weight"]) for n in self.neighbors(current_node)])
-			if not (current_node,next_node) in new_graph.edges():
-				new_graph.add_edge(current_node,next_node,weight=0)
-			new_graph.edge[current_node][next_node]["weight"] += 1.0
-			current_node = next_node
-		for edge in new_graph.edges(data=True):
-			if edge[2]["weight"] < EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD * len(self.nodes()):
-				new_graph.remove_edge(edge[0],edge[1])
-		return nx.connected_components(new_graph)
+		current_graph = copy.deepcopy(self)
+		current_graph.remove_node(self.target_word)
+		senses = []
+
+		while current_graph.nodes():
+			new_graph = nx.Graph()
+			current_node = choice(current_graph.nodes())
+			if not current_graph.neighbors(current_node):
+				current_graph.remove_node(current_node)
+				continue
+			for i in range(EXPERIMENTALLY_DETERMINED_CONSTANT_NUM_STEPS * len(current_graph.nodes())):
+				# do magic
+				next_node = weighted_choice(
+					[
+					(n,current_graph.edge[n][current_node]["weight"]/current_graph.get_normalization_factor(n,current_node))
+					for n in current_graph.neighbors(current_node)
+					])
+
+				if not (current_node,next_node) in new_graph.edges():
+					new_graph.add_edge(current_node,next_node,num_traversals=0)
+				new_graph.edge[current_node][next_node]["num_traversals"] += 1.0
+				current_node = next_node
+			for edge in new_graph.edges(data=True):
+				if edge[2]["num_traversals"] < EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD * len(current_graph.nodes()):
+					new_graph.remove_edge(edge[0],edge[1])
+			connected_components = nx.connected_components(new_graph)
+			top_traversals = 0
+			top_component = None
+			for i in range(len(connected_components)):
+				total_traversals = 0
+				for node in connected_components[i]:
+					for other_node in connected_components[i]:
+						if other_node in new_graph.edge[node]:
+							total_traversals += new_graph.edge[node][other_node]["num_traversals"]
+				if total_traversals >= top_traversals:
+					top_traversals = total_traversals
+					top_component = connected_components[i]
+			senses.append(top_component[:])
+			for node in top_component:
+				current_graph.remove_node(node)
+		return senses
 
 
 	def save_to_file(self,filename):
