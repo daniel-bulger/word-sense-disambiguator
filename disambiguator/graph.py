@@ -8,7 +8,7 @@ from random import choice
 import copy
 WORDS_PER_SENSE = 999 # shhhh
 EXPERIMENTALLY_DETERMINED_CONSTANT_NUM_STEPS = 10
-EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD = 1/float(5)
+EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD = 1/float(10)
 
 def weighted_choice(choices):
    total = sum(w for c, w in choices)
@@ -52,10 +52,12 @@ def get_leaves(ptree):
 def merge_graphs(graphs):
 	new_graph = Graph(graphs[0].target_word)
 	for graph in graphs:
+		print "Merging nodes"
 		for node in graph.nodes(data=True):
 			if not node[0] in new_graph:
 				new_graph.add_node(node[0],num=0,pos=node[1]["pos"])
 			new_graph.node[node[0]]["num"] += node[1]["num"]
+		print "Merging edges"
 		for edge in graph.edges(data=True):
 			e1 = edge[0]
 			e2 = edge[1]
@@ -68,6 +70,7 @@ class Graph(nx.Graph):
 	def __init__(self,target_word):
 		nx.Graph.__init__(self)
 		self.cached_relatedness = None
+		self.cached_senses = None
 		self.target_word = target_word
 		self.add_node(target_word,num=0,is_target=1)
 
@@ -142,6 +145,10 @@ class Graph(nx.Graph):
 	def get_normalization_factor(self,word1,word2):
 		return math.sqrt(self.node[word1]["num"]*self.node[word2]["num"])
 	def get_senses(self):
+		if not self.cached_senses:
+			self.cached_senses = self.get_senses_markov()
+		return self.cached_senses
+	def get_senses_maxmax(self):
 		# MaxMax algorithm (http://www.sussex.ac.uk/Users/drh21/78160368.CICLing.2013.preprint.pdf)
 		new_graph = nx.DiGraph()
 		for node in self.nodes():
@@ -197,7 +204,7 @@ class Graph(nx.Graph):
 			if not current_graph.neighbors(current_node):
 				current_graph.remove_node(current_node)
 				continue
-			for i in range(EXPERIMENTALLY_DETERMINED_CONSTANT_NUM_STEPS * len(current_graph.nodes())):
+			for i in range(EXPERIMENTALLY_DETERMINED_CONSTANT_NUM_STEPS * len(current_graph.edges())):
 				# do magic
 				next_node = weighted_choice(
 					[
@@ -210,7 +217,7 @@ class Graph(nx.Graph):
 				new_graph.edge[current_node][next_node]["num_traversals"] += 1.0
 				current_node = next_node
 			for edge in new_graph.edges(data=True):
-				if edge[2]["num_traversals"] < EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD * len(current_graph.nodes()):
+				if edge[2]["num_traversals"] < EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD * len(current_graph.edges()):
 					new_graph.remove_edge(edge[0],edge[1])
 			connected_components = nx.connected_components(new_graph)
 			top_traversals = 0
@@ -228,6 +235,20 @@ class Graph(nx.Graph):
 			for node in top_component:
 				current_graph.remove_node(node)
 		return senses
+	def get_predicted_sense(self,sentence,senses = None):
+		if not senses:
+			senses = self.get_senses()
+		max_similarity = 0
+		most_similar_sense = None
+		for sense in senses:
+			similarity = 0
+			for word in sentence:
+				if word in sense:
+					similarity += 1
+			if similarity > max_similarity:
+				max_similarity = similarity
+				most_similar_sense = sense
+		return most_similar_sense
 
 
 	def save_to_file(self,filename):

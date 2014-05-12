@@ -5,7 +5,8 @@ from nltk.tree import ParentedTree
 from stat_parser import Parser
 parser = Parser()
 
-query = sys.argv[1]
+sentence = sys.argv[1]
+query = sys.argv[2]
 # trees = []
 # done = 0
 # for sentence in brown.sents():
@@ -40,9 +41,11 @@ for tree in trees:
 	g = Graph(query)
 	g.update(tree)
 	graphs.append(g)
-print "Merging graphs" 
+print "Merging graphs"
 new_graph = merge_graphs(graphs)
 print "Drawing graph (fake)"
 new_graph.draw("new_graph_"+query)
 print "Getting senses"
-print new_graph.get_senses_markov()
+print new_graph.get_senses()
+print "Prediction is..."
+print new_graph.get_predicted_sense(sentence)
