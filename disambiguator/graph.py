@@ -7,8 +7,8 @@ import random
 from random import choice
 import copy
 WORDS_PER_SENSE = 999 # shhhh
-EXPERIMENTALLY_DETERMINED_CONSTANT_NUM_STEPS = 1000
-EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD = 1/float(8)
+EXPERIMENTALLY_DETERMINED_CONSTANT_NUM_STEPS = 10
+EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD = 1/float(5)
 
 def weighted_choice(choices):
    total = sum(w for c, w in choices)
@@ -109,7 +109,7 @@ class Graph(nx.Graph):
 					self.edge[word][other_word]["weight"] += 1.0/math.pow(
 						get_distance(leaf,other_leaf)*
 						get_distance(leaf,central_leaf)*
-						get_distance(other_leaf,central_leaf),1/3
+						get_distance(other_leaf,central_leaf),1/float(3)
 						)
 		self.invalidate_cache()
 	def draw(self,filename = None):
@@ -182,6 +182,14 @@ class Graph(nx.Graph):
 		current_graph = copy.deepcopy(self)
 		current_graph.remove_node(self.target_word)
 		senses = []
+
+		#remove nodes that only occur once
+		nodes_to_remove = []
+		for node in current_graph.nodes(data=True):
+			if node[1]["num"] == 1:
+				nodes_to_remove.append(node[0])
+		for node in nodes_to_remove:
+			current_graph.remove_node(node)
 
 		while current_graph.nodes():
 			new_graph = nx.Graph()
