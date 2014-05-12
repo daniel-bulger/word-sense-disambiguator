@@ -6,21 +6,21 @@ from stat_parser import Parser
 parser = Parser()
 
 query = sys.argv[1]
-trees = []
-done = 0
-for sentence in brown.sents():
-	if done >= 5:
-		break
-	if not query in sentence:
-		continue
-	if len(sentence) > 20:
-		continue
-	try:
-		trees.append(parser.parse(" ".join(sentence)))
-		done += 1
-		print done
-	except:
-		print "oops couldn't parse that one"
+# trees = []
+# done = 0
+# for sentence in brown.sents():
+# 	if done >= 5:
+# 		break
+# 	if not query in sentence:
+# 		continue
+# 	if len(sentence) > 20:
+# 		continue
+# 	try:
+# 		trees.append(parser.parse(" ".join(sentence)))
+# 		done += 1
+# 		print done
+# 	except:
+# 		print "oops couldn't parse that one"
 trees = []
 trees.append(parser.parse("The food was on the table where the child likes to eat"))
 trees.append(parser.parse("I eat food at the table"))
@@ -45,4 +45,4 @@ new_graph = merge_graphs(graphs)
 print "Drawing graph (fake)"
 new_graph.draw("new_graph_"+query)
 print "Getting senses"
-print new_graph.get_senses()
+print new_graph.get_senses_markov()

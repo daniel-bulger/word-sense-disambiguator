@@ -3,7 +3,21 @@ from nltk.tree import ParentedTree
 import matplotlib.pyplot as plt
 import thread
 import math
-WORDS_PER_SENSE = 999
+import random
+from random import choice
+WORDS_PER_SENSE = 999 # shhhh
+EXPERIMENTALLY_DETERMINED_CONSTANT_NUM_STEPS = 1000
+EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD = 1/float(12)
+
+def weighted_choice(choices):
+   total = sum(w for c, w in choices)
+   r = random.uniform(0, total)
+   upto = 0
+   for c, w in choices:
+      if upto + w > r:
+         return c
+      upto += w
+   assert False, "OOOPS"
 
 def get_distance_from_root(node):
 	depth = 0
@@ -163,6 +177,22 @@ class Graph(nx.Graph):
 			#senses[i] = [word for word in senses[i] if self.node[word]["pos"] == "NN" ]
 
 		return senses
+	def get_senses_markov(self):
+		current_node = choice(self.nodes())
+		new_graph = nx.Graph()
+		for i in range(EXPERIMENTALLY_DETERMINED_CONSTANT_NUM_STEPS * len(self.nodes())):
+			# do magic
+			next_node = weighted_choice([(n,self.edge[n][current_node]["weight"]) for n in self.neighbors(current_node)])
+			if not (current_node,next_node) in new_graph.edges():
+				new_graph.add_edge(current_node,next_node,weight=0)
+			new_graph.edge[current_node][next_node]["weight"] += 1.0
+			current_node = next_node
+		for edge in new_graph.edges(data=True):
+			if edge[2]["weight"] < EXPERIMENTALLY_DETERMINED_CONSTANT_TRAVERSAL_THRESHOLD * len(self.nodes()):
+				new_graph.remove_edge(edge[0],edge[1])
+		return nx.connected_components(new_graph)
+
+
 	def save_to_file(self,filename):
 		nx.write_gml(self,filename)
 
