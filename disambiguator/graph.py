@@ -79,7 +79,7 @@ class Graph(nx.Graph):
 
 	def print_relatedness_to_target_in_order(self):
 		for node in sorted(self.neighbors(self.target_word),key=self.relatedness_to_target_word,reverse=True):
-			print node,
+			print node,self.relatedness_to_target_word(node),self.node[node]["num"]
 		print
 
 	def update(self,syntax_tree):
