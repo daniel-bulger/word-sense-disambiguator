@@ -155,7 +155,7 @@ class Graph(nx.Graph):
 			weights.append(edge[2]["weight"]/self.get_normalization_factor(edge[0],edge[1]))
 		median = 0
 		if len(weights) % 2 == 0:
-			median = (weights[len(weights)/2]+weights[len(weights)/2 + 1]) / 2.0
+			median = (weights[len(weights)/2-1]+weights[len(weights)/2]) / 2.0
 		else:
 			median = weights[len(weights)/2]
 		self.cached_relatedness = median
@@ -273,7 +273,7 @@ class Graph(nx.Graph):
 				if closeness_to_each_other > max_closeness:
 					max_closeness = closeness_to_each_other
 					closeness_indices = (i,j)
-		if self.get_median_relatedness() < max_closeness:
+		if self.get_median_relatedness() < max_closeness*1.5:
 			new_sense = senses[closeness_indices[1]][:]
 			senses[closeness_indices[0]].extend(new_sense)
 			senses.pop(closeness_indices[1])
@@ -287,16 +287,16 @@ class Graph(nx.Graph):
 		for sense in senses:
 			similarity = 0
 			target_leaf = None
-			for leaf in sentence_tree.leaves():
+			for leaf in get_leaves(sentence_tree):
 				if leaf[0] == self.target_word:
 					target_leaf = leaf
 					break
 			if not target_leaf:
 				raise Exception("Target word must be in sentence to search")
-			for leaf in sentence_tree.leaves():
+			for leaf in get_leaves(sentence_tree):
 				word = leaf[0]
 				if word in sense:
-					similarity += 1/float(get_distance(leaf,target_leaf))
+					similarity += (1/float(get_distance(leaf,target_leaf)))/len(sense)
 			if similarity > max_similarity:
 				max_similarity = similarity
 				most_similar_sense = sense
